@@ -1,0 +1,16 @@
+# Core
+numpy >= 2.2.4, == 2.2.*
+matplotlib >= 3.10.1, == 3.10.*
+numba >= 0.61.2, == 0.61.*
+optikon >= 0.1.0
+
+# Testing and Building
+pytest>=8.3.5
+build>=1.2.2
+twine>=6.1.0
+
+# Notebooks
+jupyter_core
+jupyter_client
+ipykernel
+ipython

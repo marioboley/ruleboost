@@ -1,0 +1,8 @@
+[project]
+name = "ruleboost"
+version = "0.0.1"
+description = "Interpretable rule ensembles via gradient boosting"
+authors = [{ name = "Mario Boley", email = "mario.boley@gmail.com" }]
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = ["numpy", "numba", "optikon"]
