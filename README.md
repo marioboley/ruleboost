@@ -1,2 +1,3 @@
 # ruleboost
-Learn additive rule ensembles via gradiant boostig
+
+Learn additive rule ensembles via gradiant boostig.
