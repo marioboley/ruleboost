@@ -1,6 +1,6 @@
 [project]
 name = "ruleboost"
-version = "0.1.0"
+version = "0.1.1"
 description = "Interpretable rule ensembles via gradient boosting"
 authors = [{ name = "Mario Boley", email = "mario.boley@gmail.com" }]
 readme = "README.md"
