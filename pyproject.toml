@@ -1,8 +1,14 @@
 [project]
-name = "ruleboost"
-version = "0.1.1"
-description = "Interpretable rule ensembles via gradient boosting"
-authors = [{ name = "Mario Boley", email = "mario.boley@gmail.com" }]
-readme = "README.md"
-license = { text = "MIT" }
-dependencies = ["numpy", "numba", "optikon"]
+name = 'ruleboost'
+version = '0.1.1'
+description = 'Interpretable rule ensembles via gradient boosting'
+authors = [{ name = 'Mario Boley', email = 'mario.boley@gmail.com' },
+           { name = 'Fan Yang', email='fan.yang1@monash.edu'}]
+readme = 'README.md'
+license = { text = 'MIT' }
+dependencies = [
+    'numpy>=2.2.6, <2.3',
+    'scipy>=1.15.3, <1.16',
+    'numba>=0.62.1, <=1.0',
+    'optikon>=1.5, <0.2'
+    ]
