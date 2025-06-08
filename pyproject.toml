@@ -10,5 +10,6 @@ dependencies = [
     'numpy>=2.2.6, <2.3',
     'scipy>=1.15.3, <1.16',
     'numba>=0.62.1, <=1.0',
+    'scikit-learn>=1.7.0, <2.0',
     'optikon>=1.5, <0.2'
     ]
