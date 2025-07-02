@@ -1,6 +1,6 @@
 [project]
 name = 'ruleboost'
-version = '0.1.1'
+version = '0.2.0'
 description = 'Interpretable rule ensembles via gradient boosting'
 authors = [{ name = 'Mario Boley', email = 'mario.boley@gmail.com' },
            { name = 'Fan Yang', email='fan.yang1@monash.edu'}]
@@ -9,7 +9,7 @@ license = { text = 'MIT' }
 dependencies = [
     'numpy>=2.2.6, <2.3',
     'scipy>=1.15.3, <1.16',
-    'numba>=0.62.1, <=1.0',
+    'numba>=0.62.1, <1.0',
     'scikit-learn>=1.7.0, <2.0',
-    'optikon>=1.5, <0.2'
+    'optikon==0.1.5'
     ]
