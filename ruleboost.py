@@ -188,9 +188,18 @@ def gradient_sum_rule_ensemble(spec, state, props, fit_function, gradient_functi
 
 class BaseRuleBoostingEstimator(BaseEstimator):
 
-    def __init__(self, spec_factory, state_factory, gradient_function, fit_function, num_rules=3, fit_intercept=True, lam=0.0, max_depth=5):
+    def __init__(self, 
+                 spec_factory, 
+                 state_factory, 
+                 gradient_function, 
+                 fit_function, num_rules=3, 
+                 fit_intercept=True, 
+                 lam=0.0, 
+                 prop_factory=equal_width_propositionalization,
+                 max_depth=5):
         self.num_rules = num_rules
         self.fit_intercept = fit_intercept
+        self.prop_factory = prop_factory
         self.max_depth = max_depth
         self.lam = lam
         self.spec_factory = spec_factory
@@ -199,7 +208,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
         self.fit_function = fit_function
 
     def fit(self, x, y):
-        props = equal_width_propositionalization(x)
+        props = self.prop_factory(x)
         spec = self.spec_factory(y, x, self.num_rules, self.fit_intercept, self.lam)
         state = self.state_factory(spec)
         self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, props, self.fit_function, self.gradient_function)
@@ -224,7 +233,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
 
 class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     """
-    Rule-based regressor using greedy gradient boosting with propositional rules.
+    Rule-based regressor using gradient boosting with branch-and-bound search for conjunctive condition.
 
     Parameters
     ----------
@@ -235,21 +244,25 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     lam : float, default=1.0
         L2 regularization parameter.
     max_depth : int, default=5
-        Maximum depth of rule conditions.
+        Maximum depth of rule condition tree search.
 
     Examples
     --------
     >>> from ruleboost import RuleBoostingRegressor
+    >>> from optikon import full_propositionalization
     >>> import numpy as np
     >>> x = np.array([[0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]])
-    >>> y = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0])
-    >>> model = RuleBoostingRegressor(num_rules=1, lam=0.0, fit_intercept=True).fit(x, y)
-    >>> model.rules_str()
+    >>> y = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 4.0, 4.0, 4.0])
+    >>> model = RuleBoostingRegressor(num_rules=2, lam=0.0, fit_intercept=True, prop=full_propositionalization).fit(x, y)
+    >>> print(model.rules_str()) # doctest: +NORMALIZE_WHITESPACE
+        +4.000 if  
+        -3.000 if x1 <= 0.600 
+        -1.000 if x1 <= 0.300 
     >>> np.round(model.predict(x), 3)
-    array([0.5 , 0.5 , 0.5 , 0.5])
+    array([0., 0., 0., 1., 1., 1., 4., 4., 4.])
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, max_depth=5):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop=equal_width_propositionalization, max_depth=5):
         super().__init__(RegressionSpec, 
                          IncrementalLeastSquaresBoostingState.from_spec, 
                          gradient_least_squares, 
@@ -257,11 +270,42 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
                          num_rules, 
                          fit_intercept, 
                          lam, 
+                         prop,
                          max_depth)
 
 class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
- 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, max_depth=5):
+    """
+    Rule-based regressor using gradient boosting with branch-and-bound search for conjunctive condition.
+
+    Parameters
+    ----------
+    num_rules : int, default=3
+        Maximum number of rules to fit.
+    fit_intercept : bool, default=True
+        Whether to include an intercept term.
+    lam : float, default=1.0
+        L2 regularization parameter.
+    max_depth : int, default=5
+        Maximum depth of rule condition tree search.
+
+    Examples
+    --------
+    >>> from ruleboost import RuleBoostingClassifier
+    >>> from optikon import full_propositionalization
+    >>> import numpy as np
+    >>> x = np.array([[0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]])
+    >>> y = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0])
+    >>> model = RuleBoostingClassifier(num_rules=1, fit_intercept=True, prop=full_propositionalization).fit(x, y)
+    >>> print(model.rules_str()) # doctest: +NORMALIZE_WHITESPACE
+        -0.475 if  
+        +0.675 if x1 >= 0.400 & x1 <= 0.600
+    >>> model.predict(x)
+    array([0, 0, 0, 1, 1, 1, 0, 0, 0])
+    >>> np.round(model.predict_proba(x)[:, 1], 2)
+    array([0.38, 0.38, 0.38, 0.55, 0.55, 0.55, 0.38, 0.38, 0.38])
+    """
+
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop=equal_width_propositionalization, max_depth=5):
         super().__init__(ClassificationSpec, 
                          BoostingState.from_spec, 
                          gradient_logistic_loss, 
@@ -269,6 +313,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
                          num_rules, 
                          fit_intercept, 
                          lam, 
+                         prop,
                          max_depth)
 
     def fit(self, x, y):
