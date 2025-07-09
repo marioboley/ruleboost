@@ -1,11 +1,11 @@
 [project]
 name = 'ruleboost'
-version = '0.2.0'
+version = '0.2.1'
 description = 'Interpretable rule ensembles via gradient boosting'
 authors = [{ name = 'Mario Boley', email = 'mario.boley@gmail.com' },
            { name = 'Fan Yang', email='fan.yang1@monash.edu'}]
 readme = 'README.md'
-license = { text = 'MIT' }
+license = 'MIT'
 dependencies = [
     'numpy>=2.2.6, <2.3',
     'scipy>=1.15.3, <1.16',
