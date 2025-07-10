@@ -162,6 +162,31 @@ def fit_min_logistic_loss_coefs(spec, state):
 
 @njit
 def gradient_sum_rule_ensemble(spec, state, props, fit_function, gradient_function, max_depth=5):
+    """
+    Runs gradient boosting for some prediction problem.
+
+    Parameters
+    ----------
+    spec : either RegressionSpec or Classification spec
+        The specification object defines the desired model (including intercept usage and maximum number of features).
+    state : RuleBoostingState
+        The mutable shared state used during fitting, including current design matrix and coefficients.
+    props : function
+        A propositionalization factory mapping input data to a proposition array (Propositionalization)
+    fit_function : function
+        A compiled function that updates model coefficients at the end of every boosting iteration (writing to `state.coef`)
+    gradient_function : function
+        A compiled function computing the gradient signal used to guide rule selection
+    max_depth : int, optional
+        The maximum search depth for the branch-and-bound rule selection (default is 5).
+
+    Returns
+    -------
+    coef : ndarray
+        The final coefficient vector after fitting.
+    qs : List(Propositionalization)
+        The list of selected rule conditions in order of selection.
+    """
     qs = List()
     if spec.intercept:
         qs.append(Propositionalization(np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64), np.empty(0, dtype=np.int64))) 
