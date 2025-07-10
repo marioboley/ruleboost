@@ -1,7 +1,7 @@
 import numpy as np
 from numba import int64, float64, boolean, njit
 from numba.experimental import jitclass
-from optikon import max_weighted_support, equal_width_propositionalization
+from optikon import Propositionalization, max_weighted_support_bb, equal_width_propositionalization
 from numba.typed import List
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
@@ -164,7 +164,7 @@ def fit_min_logistic_loss_coefs(spec, state):
 def gradient_sum_rule_ensemble(spec, state, props, fit_function, gradient_function, max_depth=5):
     qs = List()
     if spec.intercept:
-        qs.append(props[0:0]) 
+        qs.append(Propositionalization(np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64), np.empty(0, dtype=np.int64))) 
         state.phi[:, state.current_features] = 1
         state.current_features += 1
         fit_function(spec, state)
@@ -172,12 +172,12 @@ def gradient_sum_rule_ensemble(spec, state, props, fit_function, gradient_functi
     for _ in range(spec.max_features):
         g = gradient_function(spec, state)
 
-        opt_key_pos, opt_val_pos, _, _ = max_weighted_support(spec.x, g, props, max_depth)
-        opt_key_neg, opt_val_neg, _, _ = max_weighted_support(spec.x, -g, props, max_depth)
+        opt_q_pos, opt_val_pos, _ = max_weighted_support_bb(spec.x, g, props, max_depth)
+        opt_q_neg, opt_val_neg, _ = max_weighted_support_bb(spec.x, -g, props, max_depth)
         if opt_val_pos >= opt_val_neg:
-            qs.append(props[opt_key_pos])
+            qs.append(opt_q_pos)
         else:
-            qs.append(props[opt_key_neg])
+            qs.append(opt_q_neg)
 
         state.phi[qs[-1].support_all(spec.x), state.current_features] = 1
         state.current_features += 1
@@ -208,10 +208,9 @@ class BaseRuleBoostingEstimator(BaseEstimator):
         self.fit_function = fit_function
 
     def fit(self, x, y):
-        props = self.prop_factory(x)
         spec = self.spec_factory(y, x, self.num_rules, self.fit_intercept, self.lam)
         state = self.state_factory(spec)
-        self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, props, self.fit_function, self.gradient_function)
+        self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, self.prop_factory, self.fit_function, self.gradient_function)
         return self
     
     def predict(self, x):
