@@ -161,7 +161,7 @@ def fit_min_logistic_loss_coefs(spec, state):
             break
 
 @njit
-def gradient_sum_rule_ensemble(spec, state, props, fit_function, gradient_function, max_depth=5):
+def gradient_sum_rule_ensemble(spec, state, props_fac, fit_function, gradient_function, max_depth=5):
     """
     Runs gradient boosting for some prediction problem.
 
@@ -188,6 +188,7 @@ def gradient_sum_rule_ensemble(spec, state, props, fit_function, gradient_functi
         The list of selected rule conditions in order of selection.
     """
     qs = List()
+    props = props_fac(spec.x)
     if spec.intercept:
         qs.append(Propositionalization(np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64), np.empty(0, dtype=np.int64))) 
         state.phi[:, state.current_features] = 1
