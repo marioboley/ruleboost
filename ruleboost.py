@@ -1,7 +1,7 @@
 import numpy as np
 from numba import int64, float64, boolean, njit
 from numba.experimental import jitclass
-from optikon import Propositionalization, max_weighted_support_bb, equal_width_propositionalization
+from optikon import Propositionalization, max_weighted_support_bb, max_weighted_support_greedy, equal_width_propositionalization, full_propositionalization
 from numba.typed import List
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
@@ -160,35 +160,48 @@ def fit_min_logistic_loss_coefs(spec, state):
         if np.linalg.norm(delta) < spec.tol:
             break
 
+@jitclass
+class BranchAndBoundGradientSumBaseLearner:
+
+    max_depth: int64
+    props: Propositionalization
+
+    def __init__(self, spec, max_depth=5, prop_fac=equal_width_propositionalization):
+        self.max_depth = max_depth
+        self.props = prop_fac(spec.x)
+
+    def compute(self, spec, state, gradient_function):
+        g = gradient_function(spec, state)
+
+        opt_q_pos, opt_val_pos, _ = max_weighted_support_bb(spec.x, g, self.props, self.max_depth)
+        opt_q_neg, opt_val_neg, _ = max_weighted_support_bb(spec.x, -g, self.props, self.max_depth)
+        if opt_val_pos >= opt_val_neg:
+            return opt_q_pos
+        else:
+            return opt_q_neg
+
+
+@jitclass
+class GreedyGradientSumBaseLearner:
+
+    max_depth: int64
+
+    def __init__(self, spec, max_depth=5, prop_factory=None):
+        self.max_depth = max_depth
+
+    def compute(self, spec, state, gradient_function):
+        g = gradient_function(spec, state)
+
+        opt_q_pos, opt_val_pos, _ = max_weighted_support_greedy(spec.x, g, self.max_depth)
+        opt_q_neg, opt_val_neg, _ = max_weighted_support_greedy(spec.x, -g, self.max_depth)
+        if opt_val_pos >= opt_val_neg:
+            return opt_q_pos
+        else:
+            return opt_q_neg
+        
 @njit
-def gradient_sum_rule_ensemble(spec, state, props_fac, fit_function, gradient_function, max_depth=5):
-    """
-    Runs gradient boosting for some prediction problem.
-
-    Parameters
-    ----------
-    spec : either RegressionSpec or Classification spec
-        The specification object defines the desired model (including intercept usage and maximum number of features).
-    state : RuleBoostingState
-        The mutable shared state used during fitting, including current design matrix and coefficients.
-    props : function
-        A propositionalization factory mapping input data to a proposition array (Propositionalization)
-    fit_function : function
-        A compiled function that updates model coefficients at the end of every boosting iteration (writing to `state.coef`)
-    gradient_function : function
-        A compiled function computing the gradient signal used to guide rule selection
-    max_depth : int, optional
-        The maximum search depth for the branch-and-bound rule selection (default is 5).
-
-    Returns
-    -------
-    coef : ndarray
-        The final coefficient vector after fitting.
-    qs : List(Propositionalization)
-        The list of selected rule conditions in order of selection.
-    """
+def gradient_sum_rule_ensemble(spec, state, fit_function, base_learner, gradient_function):
     qs = List()
-    props = props_fac(spec.x)
     if spec.intercept:
         qs.append(Propositionalization(np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64), np.empty(0, dtype=np.int64))) 
         state.phi[:, state.current_features] = 1
@@ -196,14 +209,7 @@ def gradient_sum_rule_ensemble(spec, state, props_fac, fit_function, gradient_fu
         fit_function(spec, state)
         
     for _ in range(spec.max_features):
-        g = gradient_function(spec, state)
-
-        opt_q_pos, opt_val_pos, _ = max_weighted_support_bb(spec.x, g, props, max_depth)
-        opt_q_neg, opt_val_neg, _ = max_weighted_support_bb(spec.x, -g, props, max_depth)
-        if opt_val_pos >= opt_val_neg:
-            qs.append(opt_q_pos)
-        else:
-            qs.append(opt_q_neg)
+        qs.append(base_learner.compute(spec, state, gradient_function))
 
         state.phi[qs[-1].support_all(spec.x), state.current_features] = 1
         state.current_features += 1
@@ -211,8 +217,17 @@ def gradient_sum_rule_ensemble(spec, state, props_fac, fit_function, gradient_fu
         fit_function(spec, state)
     return state.coef, qs
 
-
 class BaseRuleBoostingEstimator(BaseEstimator):
+
+    prop_options = {
+        'equal_width': equal_width_propositionalization,
+        'full': full_propositionalization
+    } 
+
+    baselearner_options = {
+        'greedy': GreedyGradientSumBaseLearner,
+        'bb': BranchAndBoundGradientSumBaseLearner,
+    }
 
     def __init__(self, 
                  spec_factory, 
@@ -221,11 +236,13 @@ class BaseRuleBoostingEstimator(BaseEstimator):
                  fit_function, num_rules=3, 
                  fit_intercept=True, 
                  lam=0.0, 
-                 prop_factory=equal_width_propositionalization,
+                 prop='equal_width',
+                 baselearner='greedy',
                  max_depth=5):
         self.num_rules = num_rules
         self.fit_intercept = fit_intercept
-        self.prop_factory = prop_factory
+        self.prop = prop
+        self.baselearner = baselearner
         self.max_depth = max_depth
         self.lam = lam
         self.spec_factory = spec_factory
@@ -235,8 +252,9 @@ class BaseRuleBoostingEstimator(BaseEstimator):
 
     def fit(self, x, y):
         spec = self.spec_factory(y, x, self.num_rules, self.fit_intercept, self.lam)
+        base_learner_function = self.baselearner_options[self.baselearner](spec, self.max_depth, self.prop_options[self.prop])
         state = self.state_factory(spec)
-        self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, self.prop_factory, self.fit_function, self.gradient_function)
+        self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, self.fit_function, base_learner_function, self.gradient_function)
         return self
     
     def predict(self, x):
@@ -274,20 +292,19 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     Examples
     --------
     >>> from ruleboost import RuleBoostingRegressor
-    >>> from optikon import full_propositionalization
     >>> import numpy as np
     >>> x = np.array([[0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]])
     >>> y = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 4.0, 4.0, 4.0])
-    >>> model = RuleBoostingRegressor(num_rules=2, lam=0.0, fit_intercept=True, prop=full_propositionalization).fit(x, y)
+    >>> model = RuleBoostingRegressor(num_rules=2, lam=0.0, fit_intercept=True, prop='full').fit(x, y)
     >>> print(model.rules_str()) # doctest: +NORMALIZE_WHITESPACE
         +4.000 if  
-        -3.000 if x1 <= 0.600 
-        -1.000 if x1 <= 0.300 
+        -3.000 if x1 <= 0.650 
+        -1.000 if x1 <= 0.350 
     >>> np.round(model.predict(x), 3)
     array([0., 0., 0., 1., 1., 1., 4., 4., 4.])
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop=equal_width_propositionalization, max_depth=5):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop='equal_width', baselearner='greedy', max_depth=4):
         super().__init__(RegressionSpec, 
                          IncrementalLeastSquaresBoostingState.from_spec, 
                          gradient_least_squares, 
@@ -296,6 +313,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
                          fit_intercept, 
                          lam, 
                          prop,
+                         baselearner,
                          max_depth)
 
 class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
@@ -316,21 +334,20 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     Examples
     --------
     >>> from ruleboost import RuleBoostingClassifier
-    >>> from optikon import full_propositionalization
     >>> import numpy as np
     >>> x = np.array([[0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]])
     >>> y = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0])
-    >>> model = RuleBoostingClassifier(num_rules=1, fit_intercept=True, prop=full_propositionalization).fit(x, y)
+    >>> model = RuleBoostingClassifier(num_rules=1, fit_intercept=True, prop='full').fit(x, y)
     >>> print(model.rules_str()) # doctest: +NORMALIZE_WHITESPACE
         -0.475 if  
-        +0.675 if x1 >= 0.400 & x1 <= 0.600
+        +0.675 if x1 >= 0.350 & x1 <= 0.650
     >>> model.predict(x)
     array([0, 0, 0, 1, 1, 1, 0, 0, 0])
     >>> np.round(model.predict_proba(x)[:, 1], 2)
     array([0.38, 0.38, 0.38, 0.55, 0.55, 0.55, 0.38, 0.38, 0.38])
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop=equal_width_propositionalization, max_depth=5):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop='equal_width', baselearner='greedy', max_depth=4):
         super().__init__(ClassificationSpec, 
                          BoostingState.from_spec, 
                          gradient_logistic_loss, 
@@ -339,6 +356,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
                          fit_intercept, 
                          lam, 
                          prop,
+                         baselearner,
                          max_depth)
 
     def fit(self, x, y):
@@ -357,4 +375,4 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
 
 if __name__=='__main__':
     import doctest
-    doctest.testmod()
+    doctest.testmod(verbose=True)
