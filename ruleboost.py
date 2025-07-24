@@ -276,7 +276,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
 
 class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     """
-    Rule-based regressor using gradient boosting with branch-and-bound search for conjunctive condition.
+    Rule-based regressor using corrective gradient boosting.
 
     Parameters
     ----------
@@ -288,7 +288,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
         L2 regularization parameter.
     baselearner : 'greedy' or 'bb', default='greedy'
         Choice of greedy conjunction optimisation or branch-and-bound rule condition optimisation
-    max_depth : int, default=5
+    max_depth : int, default=4
         Maximum depth of rule condition search (for both bb and greedy).
     prop : 'equal_width' or 'full', default='equal_width'
         Choice for available thresholds for branch-and-bound optimisation (ignored for greedy).
@@ -322,7 +322,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
 
 class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     """
-    Rule-based regressor using gradient boosting with branch-and-bound search for conjunctive condition.
+    Rule-based classifier using corrective gradient boosting.
 
     Parameters
     ----------
@@ -334,7 +334,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
         L2 regularization parameter.
     baselearner : 'greedy' or 'bb', default='greedy'
         Choice of greedy conjunction optimisation or branch-and-bound rule condition optimisation
-    max_depth : int, default=5
+    max_depth : int, default=4
         Maximum depth of rule condition search (for both bb and greedy).
     prop : 'equal_width' or 'full', default='equal_width'
         Choice for available thresholds for branch-and-bound optimisation (ignored for greedy).
