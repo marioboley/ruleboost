@@ -236,19 +236,19 @@ class BaseRuleBoostingEstimator(BaseEstimator):
                  fit_function, num_rules=3, 
                  fit_intercept=True, 
                  lam=0.0, 
-                 prop='equal_width',
                  baselearner='greedy',
-                 max_depth=5):
+                 max_depth=5,
+                 prop='equal_width'):
         self.num_rules = num_rules
         self.fit_intercept = fit_intercept
-        self.prop = prop
-        self.baselearner = baselearner
-        self.max_depth = max_depth
         self.lam = lam
         self.spec_factory = spec_factory
         self.state_factory = state_factory
         self.gradient_function = gradient_function
         self.fit_function = fit_function
+        self.baselearner = baselearner
+        self.max_depth = max_depth
+        self.prop = prop
 
     def fit(self, x, y):
         spec = self.spec_factory(y, x, self.num_rules, self.fit_intercept, self.lam)
@@ -286,8 +286,12 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
         Whether to include an intercept term.
     lam : float, default=1.0
         L2 regularization parameter.
+    baselearner : 'greedy' or 'bb', default='greedy'
+        Choice of greedy conjunction optimisation or branch-and-bound rule condition optimisation
     max_depth : int, default=5
-        Maximum depth of rule condition tree search.
+        Maximum depth of rule condition search (for both bb and greedy).
+    prop : 'equal_width' or 'full', default='equal_width'
+        Choice for available thresholds for branch-and-bound optimisation (ignored for greedy).
 
     Examples
     --------
@@ -295,7 +299,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     >>> import numpy as np
     >>> x = np.array([[0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]])
     >>> y = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 4.0, 4.0, 4.0])
-    >>> model = RuleBoostingRegressor(num_rules=2, lam=0.0, fit_intercept=True, prop='full').fit(x, y)
+    >>> model = RuleBoostingRegressor(num_rules=2, lam=0.0, fit_intercept=True).fit(x, y)
     >>> print(model.rules_str()) # doctest: +NORMALIZE_WHITESPACE
         +4.000 if  
         -3.000 if x1 <= 0.650 
@@ -304,7 +308,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     array([0., 0., 0., 1., 1., 1., 4., 4., 4.])
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop='equal_width', baselearner='greedy', max_depth=4):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', max_depth=4, prop='equal_width'):
         super().__init__(RegressionSpec, 
                          IncrementalLeastSquaresBoostingState.from_spec, 
                          gradient_least_squares, 
@@ -312,9 +316,9 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
                          num_rules, 
                          fit_intercept, 
                          lam, 
-                         prop,
                          baselearner,
-                         max_depth)
+                         max_depth,
+                         prop)
 
 class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     """
@@ -328,8 +332,12 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
         Whether to include an intercept term.
     lam : float, default=1.0
         L2 regularization parameter.
+    baselearner : 'greedy' or 'bb', default='greedy'
+        Choice of greedy conjunction optimisation or branch-and-bound rule condition optimisation
     max_depth : int, default=5
-        Maximum depth of rule condition tree search.
+        Maximum depth of rule condition search (for both bb and greedy).
+    prop : 'equal_width' or 'full', default='equal_width'
+        Choice for available thresholds for branch-and-bound optimisation (ignored for greedy).
 
     Examples
     --------
@@ -337,7 +345,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     >>> import numpy as np
     >>> x = np.array([[0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]])
     >>> y = np.array([0, 0, 0, 1, 1, 1, 0, 0, 0])
-    >>> model = RuleBoostingClassifier(num_rules=1, fit_intercept=True, prop='full').fit(x, y)
+    >>> model = RuleBoostingClassifier(num_rules=1, fit_intercept=True).fit(x, y)
     >>> print(model.rules_str()) # doctest: +NORMALIZE_WHITESPACE
         -0.475 if  
         +0.675 if x1 >= 0.350 & x1 <= 0.650
@@ -347,7 +355,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     array([0.38, 0.38, 0.38, 0.55, 0.55, 0.55, 0.38, 0.38, 0.38])
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, prop='equal_width', baselearner='greedy', max_depth=4):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', max_depth=4, prop='equal_width'):
         super().__init__(ClassificationSpec, 
                          BoostingState.from_spec, 
                          gradient_logistic_loss, 
@@ -355,9 +363,9 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
                          num_rules, 
                          fit_intercept, 
                          lam, 
-                         prop,
                          baselearner,
-                         max_depth)
+                         max_depth,
+                         prop)
 
     def fit(self, x, y):
         self.classes_, y_encoded = np.unique(y, return_inverse=True)
