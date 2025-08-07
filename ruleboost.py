@@ -1,7 +1,7 @@
 import numpy as np
 from numba import int64, float64, boolean, njit
 from numba.experimental import jitclass
-from optikon import Propositionalization, max_weighted_support_bb, max_weighted_support_greedy, equal_width_propositionalization, full_propositionalization
+from optikon import Propositionalization, max_weighted_support_bb, greedy_maximization, equal_width_propositionalization, full_propositionalization, WeightedSupport, NormalizedWeightedSupport
 from numba.typed import List
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
@@ -192,8 +192,8 @@ class GreedyGradientSumBaseLearner:
     def compute(self, spec, state, gradient_function):
         g = gradient_function(spec, state)
 
-        opt_q_pos, opt_val_pos, _ = max_weighted_support_greedy(spec.x, g, self.max_depth)
-        opt_q_neg, opt_val_neg, _ = max_weighted_support_greedy(spec.x, -g, self.max_depth)
+        opt_q_pos, opt_val_pos, _ = greedy_maximization(spec.x, WeightedSupport(g), self.max_depth)
+        opt_q_neg, opt_val_neg, _ = greedy_maximization(spec.x, WeightedSupport(-g), self.max_depth)
         if opt_val_pos >= opt_val_neg:
             return opt_q_pos
         else:
