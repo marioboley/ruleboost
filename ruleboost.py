@@ -96,6 +96,9 @@ class LeastSquaresRisk:
     def gradient(self, spec, state):
         return state.phi[:, :state.current_features].dot(state.coef[:state.current_features]) - spec.y
     
+    def hessian_diagonal(self, spec, state):
+        return np.ones_like(spec.y)
+    
     def value(self, spec, state):
         return np.sum((state.phi[:, :state.current_features].dot(state.coef[:state.current_features]) - spec.y))**2
 
@@ -110,7 +113,11 @@ class LogisticRisk:
         pass
 
     def gradient(self, spec, state):
-        return sigmoid(state.phi[:, :state.current_features].dot(state.coef[:state.current_features])) - spec.y    
+        return sigmoid(state.phi[:, :state.current_features].dot(state.coef[:state.current_features])) - spec.y
+    
+    def hessian_diagonal(self, spec, state):
+        p = sigmoid(state.phi[:, :state.current_features].dot(state.coef[:state.current_features]))
+        return p*(1-p)
 
 # @njit
 # def gradient_least_squares(spec, state):
@@ -237,7 +244,28 @@ class GreedyTraditionalGradientBoostingBaseLearner:
             return opt_q_pos
         else:
             return opt_q_neg
-        
+
+@jitclass
+class GreedyExtremeGradientBoostingBaseLearner:
+
+    max_depth: int64
+    lam: float64
+
+    def __init__(self, spec, max_depth=5, prop_factory=None):
+        self.max_depth = max_depth
+        self.lam = spec.lam
+
+    def compute(self, spec, state, risk_function):
+        g = risk_function.gradient(spec, state)
+        h = risk_function.hessian_diagonal(spec, state)
+
+        opt_q_pos, opt_val_pos, _ = greedy_maximization(spec.x, NormalizedWeightedSupport(g, h, 2, self.lam), self.max_depth)
+        opt_q_neg, opt_val_neg, _ = greedy_maximization(spec.x, NormalizedWeightedSupport(-g, h, 2, self.lam), self.max_depth)
+        if opt_val_pos >= opt_val_neg:
+            return opt_q_pos
+        else:
+            return opt_q_neg
+
 @njit
 def gradient_sum_rule_ensemble(spec, state, fit_function, base_learner, risk_function):
     qs = List()
@@ -266,6 +294,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
     baselearner_options = {
         ('greedy', 'gradient_sum'): GreedyGradientSumBaseLearner,
         ('greedy', 'traditional'): GreedyTraditionalGradientBoostingBaseLearner,
+        ('greedy', 'extreme'): GreedyExtremeGradientBoostingBaseLearner,
         ('bb', 'gradient_sum'): BranchAndBoundGradientSumBaseLearner,
     }
 
@@ -402,6 +431,11 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     array([0, 0, 0, 1, 1, 1, 0, 0, 0])
     >>> np.round(model.predict_proba(x)[:, 1], 2)
     array([0.38, 0.38, 0.38, 0.55, 0.55, 0.55, 0.38, 0.38, 0.38])
+
+    >>> model2 = RuleBoostingClassifier(num_rules=1, fit_intercept=True, objective='extreme', lam=2.0).fit(x, y)
+    >>> print(model2.rules_str()) # doctest: +NORMALIZE_WHITESPACE
+    -0.284 if  
+    +0.361 if x1 >= 0.350 & x1 <= 0.650 
     """
 
     def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', objective='gradient_sum', max_depth=4, prop='equal_width'):
