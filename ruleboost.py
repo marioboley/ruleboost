@@ -87,17 +87,38 @@ class IncrementalLeastSquaresBoostingState:
         current_features = 0
         return IncrementalLeastSquaresBoostingState(phi, coef, current_features, g, l)
 
-@njit
-def gradient_least_squares(spec, state):
-    return state.phi[:, :state.current_features].dot(state.coef[:state.current_features]) - spec.y
+@jitclass
+class LeastSquaresRisk:
+
+    def __init__(self):
+        pass
+
+    def gradient(self, spec, state):
+        return state.phi[:, :state.current_features].dot(state.coef[:state.current_features]) - spec.y
+    
+    def value(self, spec, state):
+        return np.sum((state.phi[:, :state.current_features].dot(state.coef[:state.current_features]) - spec.y))**2
 
 @njit
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
 
-@njit
-def gradient_logistic_loss(spec, state):
-    return sigmoid(state.phi[:, :state.current_features].dot(state.coef[:state.current_features])) - spec.y
+@jitclass
+class LogisticRisk:
+
+    def __init__(self):
+        pass
+
+    def gradient(self, spec, state):
+        return sigmoid(state.phi[:, :state.current_features].dot(state.coef[:state.current_features])) - spec.y    
+
+# @njit
+# def gradient_least_squares(spec, state):
+#     return state.phi[:, :state.current_features].dot(state.coef[:state.current_features]) - spec.y
+
+# @njit
+# def gradient_logistic_loss(spec, state):
+#     return sigmoid(state.phi[:, :state.current_features].dot(state.coef[:state.current_features])) - spec.y
 
 @njit
 def fit_minimum_squared_loss_coefs_incrementally(spec, state):
@@ -170,8 +191,8 @@ class BranchAndBoundGradientSumBaseLearner:
         self.max_depth = max_depth
         self.props = prop_fac(spec.x)
 
-    def compute(self, spec, state, gradient_function):
-        g = gradient_function(spec, state)
+    def compute(self, spec, state, risk_function):
+        g = risk_function.gradient(spec, state)
 
         opt_q_pos, opt_val_pos, _ = max_weighted_support_bb(spec.x, g, self.props, self.max_depth)
         opt_q_neg, opt_val_neg, _ = max_weighted_support_bb(spec.x, -g, self.props, self.max_depth)
@@ -189,8 +210,8 @@ class GreedyGradientSumBaseLearner:
     def __init__(self, spec, max_depth=5, prop_factory=None):
         self.max_depth = max_depth
 
-    def compute(self, spec, state, gradient_function):
-        g = gradient_function(spec, state)
+    def compute(self, spec, state, risk_function):
+        g = risk_function.gradient(spec, state)
 
         opt_q_pos, opt_val_pos, _ = greedy_maximization(spec.x, WeightedSupport(g), self.max_depth)
         opt_q_neg, opt_val_neg, _ = greedy_maximization(spec.x, WeightedSupport(-g), self.max_depth)
@@ -207,8 +228,8 @@ class GreedyTraditionalGradientBoostingBaseLearner:
     def __init__(self, spec, max_depth=5, prop_factory=None):
         self.max_depth = max_depth
 
-    def compute(self, spec, state, gradient_function):
-        g = gradient_function(spec, state)
+    def compute(self, spec, state, risk_function):
+        g = risk_function.gradient(spec, state)
 
         opt_q_pos, opt_val_pos, _ = greedy_maximization(spec.x, NormalizedWeightedSupport(g, None, 2, 0), self.max_depth)
         opt_q_neg, opt_val_neg, _ = greedy_maximization(spec.x, NormalizedWeightedSupport(-g, None, 2, 0), self.max_depth)
@@ -218,7 +239,7 @@ class GreedyTraditionalGradientBoostingBaseLearner:
             return opt_q_neg
         
 @njit
-def gradient_sum_rule_ensemble(spec, state, fit_function, base_learner, gradient_function):
+def gradient_sum_rule_ensemble(spec, state, fit_function, base_learner, risk_function):
     qs = List()
     if spec.intercept:
         qs.append(Propositionalization(np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64), np.empty(0, dtype=np.int64))) 
@@ -227,7 +248,7 @@ def gradient_sum_rule_ensemble(spec, state, fit_function, base_learner, gradient
         fit_function(spec, state)
         
     for _ in range(spec.max_features):
-        qs.append(base_learner.compute(spec, state, gradient_function))
+        qs.append(base_learner.compute(spec, state, risk_function))
 
         state.phi[qs[-1].support_all(spec.x), state.current_features] = 1
         state.current_features += 1
@@ -251,7 +272,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
     def __init__(self, 
                  spec_factory, 
                  state_factory, 
-                 gradient_function, 
+                 risk_function, 
                  fit_function, num_rules=3, 
                  fit_intercept=True, 
                  lam=0.0, 
@@ -264,7 +285,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
         self.lam = lam
         self.spec_factory = spec_factory
         self.state_factory = state_factory
-        self.gradient_function = gradient_function
+        self.risk_function = risk_function
         self.fit_function = fit_function
         self.baselearner = baselearner
         self.objective = objective
@@ -275,7 +296,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
         spec = self.spec_factory(y, x, self.num_rules, self.fit_intercept, self.lam)
         base_learner_function = self.baselearner_options[(self.baselearner, self.objective)](spec, self.max_depth, self.prop_options[self.prop])
         state = self.state_factory(spec)
-        self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, self.fit_function, base_learner_function, self.gradient_function)
+        self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, self.fit_function, base_learner_function, self.risk_function)
         return self
     
     def predict(self, x):
@@ -338,7 +359,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
     def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', objective='gradient_sum', max_depth=4, prop='equal_width'):
         super().__init__(RegressionSpec, 
                          IncrementalLeastSquaresBoostingState.from_spec, 
-                         gradient_least_squares, 
+                         LeastSquaresRisk(), 
                          fit_minimum_squared_loss_coefs_incrementally, 
                          num_rules, 
                          fit_intercept, 
@@ -386,7 +407,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', objective='gradient_sum', max_depth=4, prop='equal_width'):
         super().__init__(ClassificationSpec, 
                          BoostingState.from_spec, 
-                         gradient_logistic_loss, 
+                         LogisticRisk(), 
                          fit_min_logistic_loss_coefs, 
                          num_rules, 
                          fit_intercept, 
