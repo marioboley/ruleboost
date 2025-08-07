@@ -199,6 +199,24 @@ class GreedyGradientSumBaseLearner:
         else:
             return opt_q_neg
         
+@jitclass
+class GreedyTraditionalGradientBoostingBaseLearner:
+
+    max_depth: int64
+
+    def __init__(self, spec, max_depth=5, prop_factory=None):
+        self.max_depth = max_depth
+
+    def compute(self, spec, state, gradient_function):
+        g = gradient_function(spec, state)
+
+        opt_q_pos, opt_val_pos, _ = greedy_maximization(spec.x, NormalizedWeightedSupport(g, None, 2, 0), self.max_depth)
+        opt_q_neg, opt_val_neg, _ = greedy_maximization(spec.x, NormalizedWeightedSupport(-g, None, 2, 0), self.max_depth)
+        if opt_val_pos >= opt_val_neg:
+            return opt_q_pos
+        else:
+            return opt_q_neg
+        
 @njit
 def gradient_sum_rule_ensemble(spec, state, fit_function, base_learner, gradient_function):
     qs = List()
@@ -225,8 +243,9 @@ class BaseRuleBoostingEstimator(BaseEstimator):
     } 
 
     baselearner_options = {
-        'greedy': GreedyGradientSumBaseLearner,
-        'bb': BranchAndBoundGradientSumBaseLearner,
+        ('greedy', 'gradient_sum'): GreedyGradientSumBaseLearner,
+        ('greedy', 'traditional'): GreedyTraditionalGradientBoostingBaseLearner,
+        ('bb', 'gradient_sum'): BranchAndBoundGradientSumBaseLearner,
     }
 
     def __init__(self, 
@@ -237,6 +256,7 @@ class BaseRuleBoostingEstimator(BaseEstimator):
                  fit_intercept=True, 
                  lam=0.0, 
                  baselearner='greedy',
+                 objective='gradient_sum',
                  max_depth=5,
                  prop='equal_width'):
         self.num_rules = num_rules
@@ -247,12 +267,13 @@ class BaseRuleBoostingEstimator(BaseEstimator):
         self.gradient_function = gradient_function
         self.fit_function = fit_function
         self.baselearner = baselearner
+        self.objective = objective
         self.max_depth = max_depth
         self.prop = prop
 
     def fit(self, x, y):
         spec = self.spec_factory(y, x, self.num_rules, self.fit_intercept, self.lam)
-        base_learner_function = self.baselearner_options[self.baselearner](spec, self.max_depth, self.prop_options[self.prop])
+        base_learner_function = self.baselearner_options[(self.baselearner, self.objective)](spec, self.max_depth, self.prop_options[self.prop])
         state = self.state_factory(spec)
         self.coef_, self.q_ = gradient_sum_rule_ensemble(spec, state, self.fit_function, base_learner_function, self.gradient_function)
         return self
@@ -306,9 +327,15 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
         -1.000 if x1 <= 0.350 
     >>> np.round(model.predict(x), 3)
     array([0., 0., 0., 1., 1., 1., 4., 4., 4.])
+
+    >>> model2 = RuleBoostingRegressor(num_rules=2, lam=0.0, fit_intercept=True, objective='traditional').fit(x, y)
+    >>> print(model2.rules_str()) # doctest: +NORMALIZE_WHITESPACE
+    +1.000 if  
+    +3.000 if x1 >= 0.650 
+    -1.000 if x1 <= 0.350 
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', max_depth=4, prop='equal_width'):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', objective='gradient_sum', max_depth=4, prop='equal_width'):
         super().__init__(RegressionSpec, 
                          IncrementalLeastSquaresBoostingState.from_spec, 
                          gradient_least_squares, 
@@ -317,6 +344,7 @@ class RuleBoostingRegressor(BaseRuleBoostingEstimator, RegressorMixin):
                          fit_intercept, 
                          lam, 
                          baselearner,
+                         objective,
                          max_depth,
                          prop)
 
@@ -355,7 +383,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
     array([0.38, 0.38, 0.38, 0.55, 0.55, 0.55, 0.38, 0.38, 0.38])
     """
 
-    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', max_depth=4, prop='equal_width'):
+    def __init__(self, num_rules=3, fit_intercept=True, lam=1.0, baselearner='greedy', objective='gradient_sum', max_depth=4, prop='equal_width'):
         super().__init__(ClassificationSpec, 
                          BoostingState.from_spec, 
                          gradient_logistic_loss, 
@@ -364,6 +392,7 @@ class RuleBoostingClassifier(BaseRuleBoostingEstimator, ClassifierMixin):
                          fit_intercept, 
                          lam, 
                          baselearner,
+                         objective,
                          max_depth,
                          prop)
 
