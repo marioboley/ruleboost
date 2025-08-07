@@ -1,7 +1,7 @@
 [project]
 name = 'ruleboost'
-version = '0.3.0'
-description = 'Interpretable rule ensembles via gradient boosting'
+version = '0.4.0'
+description = 'Efficient interpretable rule ensemble learning via gradient boosting implemented with numba.'
 authors = [{ name = 'Mario Boley', email = 'mario.boley@gmail.com' },
            { name = 'Fan Yang', email='fan.yang1@monash.edu'}]
 readme = 'README.md'

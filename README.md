@@ -1,8 +1,8 @@
-# ruleboost
+# RuleBoost
 
 Learn additive rule ensembles via gradient boosting.
 
-## Usage
+## Usage Example for Classification
 
 ```python
 >>> from ruleboost import RuleBoostingClassifier
